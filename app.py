@@ -209,7 +209,7 @@ with st.sidebar:
     with c2:
         st.image("ryoryo.png", width=120)
     st.markdown(
-        "<div style='text-align:center; font-weight:700;'>실무를 겸비한 심사간호사<br>RYORYO COMPANY</div>",
+        "<div style='text-align:center; font-weight:700;'>심사간호사 개발자<br>RYORYO COMPANY</div>",
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -526,4 +526,5 @@ st.write(f"행 수: {len(unused_gd)} / 전체: {len(df_gd)}")
 height_unused = st.slider("공단 미사용 표 높이(px)", 300, 1200, 480, 20, key="h_gd_unused")
 st.dataframe(unused_gd, use_container_width=True, height=height_unused)
 st.download_button("⬇️ 공단 미사용만 다운로드", to_excel_bytes(unused_gd, "gongdan_unused"), "gongdan_unused.xlsx")
+
 

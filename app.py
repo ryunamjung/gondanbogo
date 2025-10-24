@@ -466,12 +466,27 @@ final = final.merge(s1_best, on="수가코드", how="left")
 final = final.merge(s2_best, on="수가코드", how="left")
 final = final.merge(s3_best, on="수가코드", how="left")
 
+# 🔹 매핑완료여부 컬럼 추가: 1·2·3단계 중 하나라도 매핑되면 'O', 아니면 'X'
+map_cols = [c for c in ["1단계_매핑코드", "2단계_매핑코드", "3단계_매핑코드"] if c in final.columns]
+for c in map_cols:
+    final[c] = final[c].fillna("").astype(str).str.strip()
+
+final["매핑완료여부"] = final[map_cols].apply(
+    lambda row: "O" if any(v != "" for v in row) else "X",
+    axis=1
+)
+
+
 front = [
     "수가코드",
+    "매핑완료여부",  # ← 추가
     "1단계_매핑코드", "1단계_명칭(가이드)",
     "2단계_매핑코드", "2단계_명칭(가이드)", "2단계_유사도",
     "3단계_매핑코드", "3단계_명칭(가이드)"
 ]
+front_present = [c for c in front if c in final.columns]
+final = final[front_present + [c for c in final.columns if c not in front_present]]
+
 front_present = [c for c in front if c in final.columns]
 final = final[front_present + [c for c in final.columns if c not in front_present]]
 

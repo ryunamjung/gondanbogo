@@ -194,22 +194,27 @@ st.caption("체크만 하면 적용되지 않아요. 각 단계 표 위의 **[�
 st.caption("공단파일은 그대로 업로드. 원내파일은 'EDI' / '한글명칭' / '수가코드' 컬럼 필요.")
 
 with st.sidebar:
-    st.image("ryoryo.png", width=120)
-    st.markdown("<div style='text-align:center; font-weight:700;'>RYORYO</div>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1,2,1])
+    with c2:
+        st.image("ryoryo.png", width=120)
+    st.markdown(
+        "<div style='text-align:center; font-weight:700;'>실무를 겸비한 심사간호사<br>RYORYO COMPANY</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("---")
-    st.subheader("① 파일 업로드 (파일명 자유)")
+    st.subheader("① 파일 업로드 (파일명 자유), 1단계 매핑")
     f_wonnae = st.file_uploader("원내 엑셀 업로드", type=["xlsx"])
     f_gongdan = st.file_uploader("공단 엑셀 업로드", type=["xlsx"])
 
     st.markdown("---")
-    st.subheader("② 2단계 옵션")
+    st.subheader("② 2단계 한글유사도 매핑")
     score_cut = st.slider("유사도 임계치(%)", 70, 100, 86, 1)
     top_k = st.slider("Top-K(후보 수)", 1, 5, 1, 1)
-    run_stage2 = st.button("▶ 2단계 유사도 매핑 실행")
+    run_stage2 = st.button("▶ 2단계 실행")
 
     st.markdown("---")
-    st.subheader("③ 3단계 옵션")
-    run_stage3 = st.button("▶ 3단계 (EDI 앞4 포함) 매핑 실행")
+    st.subheader("③ 3단계 edi 앞4자리만 매핑")
+    run_stage3 = st.button("▶ 3단계 실행")
 
 if not (f_wonnae and f_gongdan):
     st.info("좌측에서 '원내'와 '공단' 파일을 업로드 해주세요. (원내: EDI/한글명칭/수가코드, 공단: 코드/명칭(가이드))")
@@ -240,29 +245,42 @@ with st.spinner("1단계 매핑 중..."):
 
 st.subheader("1단계 결과 — (원내 EDI ⊂ 공단 코드) 연속포함")
 st.caption("여러 건 매칭되면 행 폭발. 체크 후 반드시 **[💾 (1단계) 제외처리 저장]**을 누르세요.")
-height1 = st.slider("1단계 표 높이(px)", 300, 1200, 520, 20)
-col_s1a, col_s1b, col_s1c = st.columns([1,1,5])
-with col_s1a:
-    s1_select_all = st.button("✅(1단계) 전체 제외")
-with col_s1b:
-    s1_clear_all  = st.button("❌(1단계) 제외 해제")
-if len(s1):
-    if s1_select_all: s1["제외"] = True
-    if s1_clear_all:  s1["제외"] = False
 
-s1_edit = st.data_editor(
-    s1, use_container_width=True, height=height1, hide_index=True,
-    column_config={"제외": st.column_config.CheckboxColumn(default=False)},
-    key="s1_editor"
-)
+with st.form("s1_form"):
+    height1 = st.slider("1단계 표 높이(px)", 300, 1200, 520, 20, key="h1")
+    # 저장본이 있으면 그걸 편집 시작점으로 사용 (체크만 바꿔도 계산은 안 됨)
+    s1_view = (st.session_state["s1_saved"].copy() 
+               if st.session_state["s1_saved"] is not None else s1.copy())
 
-col_s1_save, _ = st.columns([1,5])
-with col_s1_save:
-    if st.button("💾 (1단계) 제외처리 저장"):
-        st.session_state["s1_saved"] = s1_edit.copy()
-        st.success("1단계 제외 저장 완료!")
+    # 일괄 처리 옵션(저장시에만 적용)
+    s1_bulk = st.selectbox("일괄 처리", ["변경 없음", "전체 제외", "전체 해제"], index=0, key="s1_bulk")
+    if s1_bulk == "전체 제외":
+        s1_view["제외"] = True
+    elif s1_bulk == "전체 해제":
+        s1_view["제외"] = False
 
-st.download_button("⬇️ 1단계 결과 다운로드", to_excel_bytes(s1_edit, "stage1"), "stage1.xlsx")
+    s1_edit = st.data_editor(
+        s1_view, use_container_width=True, height=height1, hide_index=True,
+        column_config={"제외": st.column_config.CheckboxColumn(default=False)},
+        key="s1_editor",
+    )
+
+    s1_save_clicked = st.form_submit_button("💾 (1단계) 제외처리 저장")
+
+# 저장 버튼을 눌렀을 때만 세션에 확정 반영 → 이후 단계 대상/계산에 사용
+if s1_save_clicked:
+    st.session_state["s1_saved"] = s1_edit.copy()
+    st.session_state.update({
+        "s2_df": None, "s2_saved": None,
+        "s3_df": None, "s3_saved": None,
+        "prev_best_map_stage2": None,
+    })
+    st.success("1단계 제외 저장 완료!")
+
+# 항상 최신 '저장본(있으면)' 기준으로 다운로드 노출
+s1_for_dl = st.session_state["s1_saved"] if st.session_state["s1_saved"] is not None else s1_edit
+st.download_button("⬇️ 1단계 결과 다운로드", to_excel_bytes(s1_for_dl, "stage1"), "stage1.xlsx")
+
 
 # --- 2단계 대상 (1단계 저장본 기준) ---
 s1_base_for_next = st.session_state["s1_saved"] if st.session_state["s1_saved"] is not None else None
@@ -295,28 +313,35 @@ if s2 is None or len(s2) == 0:
     st.info("아직 2단계 결과가 없습니다. 사이드바에서 **[▶ 2단계 유사도 매핑 실행]**을 눌러주세요.")
     st.stop()
 else:
-    height2 = st.slider("2단계 표 높이(px)", 300, 1200, 520, 20, key="h2_show")
-    col_s2a, col_s2b, col_s2c = st.columns([1,1,5])
-    with col_s2a:
-        s2_select_all = st.button("✅(2단계) 전체 제외")
-    with col_s2b:
-        s2_clear_all  = st.button("❌(2단계) 제외 해제")
-    if s2_select_all: s2["제외"] = True
-    if s2_clear_all:  s2["제외"] = False
+    with st.form("s2_form"):
+        height2 = st.slider("2단계 표 높이(px)", 300, 1200, 520, 20, key="h2_show")
+        s2_view = (st.session_state["s2_saved"].copy() 
+                   if st.session_state["s2_saved"] is not None else s2.copy())
 
-    s2_edit = st.data_editor(
-        s2, use_container_width=True, height=height2, hide_index=True,
-        column_config={"제외": st.column_config.CheckboxColumn(default=False)},
-        key="s2_editor"
-    )
+        s2_bulk = st.selectbox("일괄 처리", ["변경 없음", "전체 제외", "전체 해제"], index=0, key="s2_bulk")
+        if s2_bulk == "전체 제외":
+            s2_view["제외"] = True
+        elif s2_bulk == "전체 해제":
+            s2_view["제외"] = False
 
-    col_s2_save, _ = st.columns([1,5])
-    with col_s2_save:
-        if st.button("💾 (2단계) 제외처리 저장"):
-            st.session_state["s2_saved"] = s2_edit.copy()
-            st.success("2단계 제외 저장 완료!")
+        s2_edit = st.data_editor(
+            s2_view, use_container_width=True, height=height2, hide_index=True,
+            column_config={"제외": st.column_config.CheckboxColumn(default=False)},
+            key="s2_editor",
+        )
 
-    st.download_button("⬇️ 2단계 결과 다운로드", to_excel_bytes(s2_edit, "stage2"), "stage2.xlsx")
+        s2_save_clicked = st.form_submit_button("💾 (2단계) 제외처리 저장")
+
+    if s2_save_clicked:
+        st.session_state["s2_saved"] = s2_edit.copy()
+        st.session_state.update({
+        "s3_df": None, "s3_saved": None,
+    })
+        st.success("2단계 제외 저장 완료!")
+
+    s2_for_dl = st.session_state["s2_saved"] if st.session_state["s2_saved"] is not None else s2_edit
+    st.download_button("⬇️ 2단계 결과 다운로드", to_excel_bytes(s2_for_dl, "stage2"), "stage2.xlsx")
+
 
 # --- 3단계 대상 (1·2단계 저장본 기준) ---
 if st.session_state["s2_saved"] is None:
@@ -353,28 +378,32 @@ if s3 is None or len(s3) == 0:
     st.info("아직 3단계 결과가 없습니다. 사이드바에서 **[▶ 3단계 (EDI 앞4 포함)]**을 눌러주세요.")
     st.stop()
 else:
-    height3 = st.slider("3단계 표 높이(px)", 300, 1200, 520, 20, key="h3_show")
-    col_s3a, col_s3b, col_s3c = st.columns([1,1,5])
-    with col_s3a:
-        s3_select_all = st.button("✅(3단계) 전체 제외")
-    with col_s3b:
-        s3_clear_all  = st.button("❌(3단계) 제외 해제")
-    if s3_select_all: s3["제외"] = True
-    if s3_clear_all:  s3["제외"] = False
+    with st.form("s3_form"):
+        height3 = st.slider("3단계 표 높이(px)", 300, 1200, 520, 20, key="h3_show")
+        s3_view = (st.session_state["s3_saved"].copy() 
+                   if st.session_state["s3_saved"] is not None else s3.copy())
 
-    s3_edit = st.data_editor(
-        s3, use_container_width=True, height=height3, hide_index=True,
-        column_config={"제외": st.column_config.CheckboxColumn(default=False)},
-        key="s3_editor"
-    )
+        s3_bulk = st.selectbox("일괄 처리", ["변경 없음", "전체 제외", "전체 해제"], index=0, key="s3_bulk")
+        if s3_bulk == "전체 제외":
+            s3_view["제외"] = True
+        elif s3_bulk == "전체 해제":
+            s3_view["제외"] = False
 
-    col_s3_save, _ = st.columns([1,5])
-    with col_s3_save:
-        if st.button("💾 (3단계) 제외처리 저장"):
+        s3_edit = st.data_editor(
+            s3_view, use_container_width=True, height=height3, hide_index=True,
+            column_config={"제외": st.column_config.CheckboxColumn(default=False)},
+            key="s3_editor",
+        )
+
+        s3_save_clicked = st.form_submit_button("💾 (3단계) 제외처리 저장")
+
+        if s3_save_clicked:
             st.session_state["s3_saved"] = s3_edit.copy()
             st.success("3단계 제외 저장 완료!")
 
-    st.download_button("⬇️ 3단계 결과 다운로드", to_excel_bytes(s3_edit, "stage3"), "stage3.xlsx")
+        s3_for_dl = st.session_state["s3_saved"] if st.session_state["s3_saved"] is not None else s3_edit
+        st.download_button("⬇️ 3단계 결과 다운로드", to_excel_bytes(s3_for_dl, "stage3"), "stage3.xlsx")
+
 
 # ===================== 최종 합본/미매핑 (저장본만 반영) =====================
 if st.session_state["s3_saved"] is None:

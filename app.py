@@ -18,6 +18,11 @@ def normalize_ko(s: str) -> str:
     if s is None: return ""
     return re.sub(r"[\s\-/_,.:;()\[\]{}<>·•＋+※★☆]", "", str(s))
 
+def is_9digit_numeric_edi(x: str) -> bool:
+    s = normalize_code(x)
+    return bool(re.fullmatch(r"\d{9}", s))
+
+
 def to_excel_bytes(df: pd.DataFrame, sheet="result"):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
@@ -141,6 +146,7 @@ def stage3_map(unmatched_after2: pd.DataFrame, gongdan: pd.DataFrame, edi_col: s
     gd = gongdan.copy()
     if "_row_id" not in wn.columns:
         wn["_row_id"] = range(len(wn))
+    wn = wn.loc[~wn[edi_col].apply(is_9digit_numeric_edi)].copy()    
 
     def first5(x: str) -> str:
         x = normalize_code(x)
@@ -366,16 +372,24 @@ base_unmatched2 = df_wn.loc[
     ~df_wn["수가코드"].astype(str).isin(mapped_keys_stage2)
 ].copy()
 
-st.subheader("3단계 대상 — 저장된 1·2단계 결과 기준")
-st.write(f"행 수: {len(base_unmatched2)}")
+# 🔹 9자리 숫자 EDI는 3단계 대상에서 제외
+mask_9digit = base_unmatched2[edi_col].apply(is_9digit_numeric_edi)
+stage3_target = base_unmatched2.loc[~mask_9digit].copy()
+stage3_excluded = base_unmatched2.loc[mask_9digit].copy()  # (선택) 참고용
+
+st.subheader("3단계 대상 — 저장된 1·2단계 결과 기준 (9자리 숫자 EDI 제외)")
+st.write(f"대상 행 수: {len(stage3_target)}  |  제외(9자리 숫자) 행 수: {len(stage3_excluded)}")
 height3t = st.slider("3단계 대상 표 높이(px)", 300, 1200, 420, 20, key="h3_target")
-st.dataframe(base_unmatched2, use_container_width=True, height=height3t)
+st.dataframe(stage3_target, use_container_width=True, height=height3t)
+# (선택) 필요 시 제외 목록 다운로드
+# st.download_button("⬇️ (참고) 9자리 숫자 EDI 제외 목록", to_excel_bytes(stage3_excluded, "excluded_9digit"), "excluded_9digit.xlsx")
+
 
 # ===================== 3단계 실행/표시 =====================
 
 if run_stage3:
     with st.spinner("3단계(EDI 앞5 포함) 매핑 중..."):
-        s3 = stage3_map(base_unmatched2, df_gd, edi_col)
+        s3 = stage3_map(stage3_target, df_gd, edi_col)
     st.session_state["s3_df"] = s3.copy()
 
 st.subheader("3단계 결과 — (원내 EDI 앞5 ⊂ 공단 코드) 연속포함")

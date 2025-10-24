@@ -367,11 +367,6 @@ height3t = st.slider("3단계 대상 표 높이(px)", 300, 1200, 420, 20, key="h
 st.dataframe(base_unmatched2, use_container_width=True, height=height3t)
 
 # ===================== 3단계 실행/표시 =====================
-if run_stage3:
-    with st.spinner("3단계(EDI 앞4 포함) 매핑 중..."):
-        s3 = stage3_map(base_unmatched2, df_gd, edi_col)
-    st.session_state["s3_df"] = s3.copy()
-
 st.subheader("3단계 결과 — (원내 EDI 앞4 ⊂ 공단 코드) 연속포함")
 s3 = st.session_state["s3_df"]
 if s3 is None or len(s3) == 0:
@@ -397,12 +392,14 @@ else:
 
         s3_save_clicked = st.form_submit_button("💾 (3단계) 제외처리 저장")
 
-        if s3_save_clicked:
-            st.session_state["s3_saved"] = s3_edit.copy()
-            st.success("3단계 제외 저장 완료!")
+    # 🔹 폼 밖에서 저장/다운로드 처리
+    if s3_save_clicked:
+        st.session_state["s3_saved"] = s3_edit.copy()
+        st.success("3단계 제외 저장 완료!")
 
-        s3_for_dl = st.session_state["s3_saved"] if st.session_state["s3_saved"] is not None else s3_edit
-        st.download_button("⬇️ 3단계 결과 다운로드", to_excel_bytes(s3_for_dl, "stage3"), "stage3.xlsx")
+    s3_for_dl = st.session_state["s3_saved"] if st.session_state["s3_saved"] is not None else s3_edit
+    st.download_button("⬇️ 3단계 결과 다운로드", to_excel_bytes(s3_for_dl, "stage3"), "stage3.xlsx")
+
 
 
 # ===================== 최종 합본/미매핑 (저장본만 반영) =====================

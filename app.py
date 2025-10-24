@@ -135,28 +135,32 @@ def stage2_map(unmatched_wn: pd.DataFrame, gongdan: pd.DataFrame, score_cut: int
     styled = res.style.apply(highlight_changed, axis=1)
     return res, changed, current_best, styled
 
-# ===================== 단계 3: (원내 EDI 앞4자리 ⊂ 공단 코드) 연속 포함 =====================
+# ===================== 단계 3: (원내 EDI 앞5자리 ⊂ 공단 코드) 연속 포함 =====================
 def stage3_map(unmatched_after2: pd.DataFrame, gongdan: pd.DataFrame, edi_col: str):
     wn = unmatched_after2.copy()
     gd = gongdan.copy()
     if "_row_id" not in wn.columns:
         wn["_row_id"] = range(len(wn))
 
-    wn["edi4_norm"] = wn[edi_col].apply(lambda x: normalize_code(x)[:4] if normalize_code(x) else "")
+    def first5(x: str) -> str:
+        x = normalize_code(x)
+        return x[:5] if x and len(x) >= 5 else ""
+
+    wn["edi5_norm"] = wn[edi_col].apply(first5)
     gd["코드_norm"] = gd["코드"].apply(normalize_code)
 
     out = []
     gd_view = gd[["코드", "코드_norm", "명칭(가이드)"]].values.tolist()
     for _, r in wn.iterrows():
-        k4 = r["edi4_norm"]
-        if not k4:
+        k5 = r["edi5_norm"]
+        if not k5:
             continue
-        matches = [(g_code, g_name) for (g_code, g_code_norm, g_name) in gd_view if k4 in g_code_norm]
+        matches = [(g_code, g_name) for (g_code, g_code_norm, g_name) in gd_view if k5 in g_code_norm]
         if matches:
             for g_code, g_name in matches:
-                base = r.drop(labels=["edi4_norm"], errors="ignore").to_dict()
+                base = r.drop(labels=["edi5_norm"], errors="ignore").to_dict()
                 base.update({
-                    "매핑단계": "3단계(EDI앞4 포함)",
+                    "매핑단계": "3단계(EDI앞5 포함)",
                     "3단계_매핑코드": g_code,
                     "3단계_명칭(가이드)": g_name,
                     "제외": False,
@@ -164,7 +168,7 @@ def stage3_map(unmatched_after2: pd.DataFrame, gongdan: pd.DataFrame, edi_col: s
                 out.append(base)
 
     cols_front = ["매핑단계", "3단계_매핑코드", "3단계_명칭(가이드)", "제외"]
-    helper_cols = {"edi4_norm"}
+    helper_cols = {"edi5_norm"}
     if not out:
         ordered = cols_front + [c for c in wn.columns if c not in helper_cols]
         return pd.DataFrame(columns=ordered).loc[:, ordered].copy()
@@ -173,6 +177,7 @@ def stage3_map(unmatched_after2: pd.DataFrame, gongdan: pd.DataFrame, edi_col: s
     tail_cols = [c for c in wn.columns if c not in cols_front and c not in helper_cols and c in res.columns]
     res = res[cols_front + tail_cols + [c for c in res.columns if c not in cols_front + tail_cols]]
     return res
+
 
 # ===================== 세션 초기화 =====================
 def init_session():
@@ -213,7 +218,7 @@ with st.sidebar:
     run_stage2 = st.button("▶ 2단계 실행")
 
     st.markdown("---")
-    st.subheader("③ 3단계 edi 앞4자리만 매핑")
+    st.subheader("③ 3단계 edi 앞5자리만 매핑")
     run_stage3 = st.button("▶ 3단계 실행")
 
 if not (f_wonnae and f_gongdan):
@@ -367,10 +372,16 @@ height3t = st.slider("3단계 대상 표 높이(px)", 300, 1200, 420, 20, key="h
 st.dataframe(base_unmatched2, use_container_width=True, height=height3t)
 
 # ===================== 3단계 실행/표시 =====================
-st.subheader("3단계 결과 — (원내 EDI 앞4 ⊂ 공단 코드) 연속포함")
+
+if run_stage3:
+    with st.spinner("3단계(EDI 앞5 포함) 매핑 중..."):
+        s3 = stage3_map(base_unmatched2, df_gd, edi_col)
+    st.session_state["s3_df"] = s3.copy()
+
+st.subheader("3단계 결과 — (원내 EDI 앞5 ⊂ 공단 코드) 연속포함")
 s3 = st.session_state["s3_df"]
 if s3 is None or len(s3) == 0:
-    st.info("아직 3단계 결과가 없습니다. 사이드바에서 **[▶ 3단계 (EDI 앞4 포함)]**을 눌러주세요.")
+    st.info("아직 3단계 결과가 없습니다. 사이드바에서 **[▶ 3단계 (EDI 앞5 포함)]**을 눌러주세요.")
     st.stop()
 else:
     with st.form("s3_form"):
@@ -392,13 +403,13 @@ else:
 
         s3_save_clicked = st.form_submit_button("💾 (3단계) 제외처리 저장")
 
-    # 🔹 폼 밖에서 저장/다운로드 처리
     if s3_save_clicked:
         st.session_state["s3_saved"] = s3_edit.copy()
         st.success("3단계 제외 저장 완료!")
 
     s3_for_dl = st.session_state["s3_saved"] if st.session_state["s3_saved"] is not None else s3_edit
     st.download_button("⬇️ 3단계 결과 다운로드", to_excel_bytes(s3_for_dl, "stage3"), "stage3.xlsx")
+
 
 
 
